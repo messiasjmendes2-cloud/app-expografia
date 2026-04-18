@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora Expográfica 2.0 - Pequeno Mundo</title>
+    <style>
+        :root { --bg-color: #1e1e1e; --panel-bg: #2d2d2d; --text-color: #e0e0e0; --accent: #007acc; --svg-bg: #f5f5f5; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; display: flex; gap: 20px; height: 100vh; box-sizing: border-box; }
+        .controls { background-color: var(--panel-bg); padding: 20px; border-radius: 8px; width: 340px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); overflow-y: auto; flex-shrink: 0; }
+        .canvas-container { flex-grow: 1; background-color: var(--panel-bg); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; box-shadow: 0 4px 6px rgba(0,0,0,0.3); overflow: hidden; }
+        h2 { margin-top: 0; font-size: 1.2rem; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .input-group { margin-bottom: 12px; }
+        label { display: block; margin-bottom: 4px; font-size: 0.85rem; color: #aaa; }
+        input[type="number"], input[type="text"] { width: 100%; padding: 8px; border: 1px solid #555; background-color: #1e1e1e; color: #fff; border-radius: 4px; box-sizing: border-box; font-family: monospace;}
+        button { width: 100%; padding: 12px; background-color: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1rem; margin-top: 10px; transition: background 0.2s; }
+        button:hover { background-color: #005f9e; }
+        .results { margin-top: 15px; padding: 15px; background-color: #1e1e1e; border-left: 4px solid var(--accent); border-radius: 4px; font-family: monospace; font-size: 0.9rem; line-height: 1.4; }
+        .error { color: #ff4757; font-weight: bold; }
+        /* Área do SVG */
+        .svg-wrapper { flex-grow: 1; background-color: var(--svg-bg); border-radius: 4px; overflow: hidden; display: flex; justify-content: center; align-items: center; position: relative;}
+        svg { width: 100%; height: 100%; }
+        
+        /* Estilos Internos do SVG */
+        .parede-fundo { fill: #ececec; }
+        .chao { stroke: #666; stroke-width: 4; }
+        .eixo { stroke: #ff4757; stroke-width: 1; stroke-dasharray: 10 5; }
+        .quadro { fill: #333; stroke: #000; stroke-width: 2; }
+        .texto-quadro { font-family: sans-serif; font-size: 12px; fill: #fff; text-anchor: middle; font-weight: bold;}
+        .medida-texto { font-family: monospace; font-size: 10px; fill: #d35400; text-anchor: middle; font-weight: bold;}
+        .medida-linha { stroke: #d35400; stroke-width: 1; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <h2>Parâmetros (cm)</h2>
+        <div class="input-group">
+            <label>Largura da Parede</label>
+            <input type="number" id="paredeL" value="1164">
+        </div>
+        <div class="input-group">
+            <label>Altura da Parede (Teto)</label>
+            <input type="number" id="paredeA" value="400">
+        </div>
+        <div class="input-group">
+            <label>Altura do Eixo Central (do chão)</label>
+            <input type="number" id="eixoH" value="150">
+        </div>
+        
+        <h2 style="margin-top: 20px;">Molduras (cm)</h2>
+        <div class="input-group">
+            <label>Medidas Horizontal (Largura x Altura)</label>
+            <div style="display: flex; gap: 10px;">
+                <input type="number" id="wH" value="61" title="Largura"> <input type="number" id="hH" value="41" title="Altura">
+            </div>
+        </div>
+        <div class="input-group">
+            <label>Medidas Vertical (Largura x Altura)</label>
+            <div style="display: flex; gap: 10px;">
+                <input type="number" id="wV" value="41" title="Largura"> <input type="number" id="hV" value="61" title="Altura">
+            </div>
+        </div>
+        <div class="input-group">
+            <label>Margem nos Cantos</label>
+            <input type="number" id="margem" value="23.5" step="0.1">
+        </div>
+
+        <h2 style="margin-top: 20px;">Ordem Curatorial</h2>
+        <div class="input-group">
+            <label>Sequência (Use H e V separados por vírgula)</label>
+            <input type="text" id="sequencia" value="H, V, H, V, H, V, H, V, H" style="text-transform: uppercase;">
+        </div>
+        
+        <button onclick="calcularEDesenhar()">Atualizar Planta</button>
+
+        <div class="results" id="output"></div>
+    </div>
+
+    <div class="canvas-container">
+        <h2>Planta Baixa Frontal (Proporção Exata)</h2>
+        <div class="svg-wrapper">
+            <svg id="paredeSvg"></svg>
+        </div>
+    </div>
+
+    <script>
+        function desenharCotaH(svg, x1, x2, y, texto) {
+            svg.innerHTML += `<line class="medida-linha" x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" />`;
+            svg.innerHTML += `<line class="medida-linha" x1="${x1}" y1="${y-3}" x2="${x1}" y2="${y+3}" />`;
+            svg.innerHTML += `<line class="medida-linha" x2="${x2}" y1="${y-3}" x2="${x2}" y2="${y+3}" />`;
+            svg.innerHTML += `<text class="medida-texto" x="${(x1+x2)/2}" y="${y-5}">${texto}</text>`;
+        }
+
+        function desenharCotaV(svg, x, y1, y2, texto) {
+            svg.innerHTML += `<line class="medida-linha" x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" />`;
+            svg.innerHTML += `<line class="medida-linha" x1="${x-3}" y1="${y1}" x2="${x+3}" y1="${y1}" />`;
+            svg.innerHTML += `<line class="medida-linha" x1="${x-3}" y1="${y2}" x2="${x+3}" y1="${y2}" />`;
+            // Texto rotacionado para cota vertical
+            svg.innerHTML += `<text class="medida-texto" x="${x-5}" y="${(y1+y2)/2}" transform="rotate(-90, ${x-5}, ${(y1+y2)/2})">${texto}</text>`;
+        }
+
+        function calcularEDesenhar() {
+            // Capturar dados
+            const paredeL = parseFloat(document.getElementById('paredeL').value);
+            const paredeA = parseFloat(document.getElementById('paredeA').value);
+            const eixoH = parseFloat(document.getElementById('eixoH').value);
+            const wH = parseFloat(document.getElementById('wH').value);
+            const hH = parseFloat(document.getElementById('hH').value);
+            const wV = parseFloat(document.getElementById('wV').value);
+            const hV = parseFloat(document.getElementById('hV').value);
+            const margem = parseFloat(document.getElementById('margem').value);
+            
+            const seqInput = document.getElementById('sequencia').value.toUpperCase();
+            // Transforma a string "H, V, H" em um array ['H', 'V', 'H'] limpando espaços
+            const seqArray = seqInput.split(',').map(item => item.trim()).filter(item => item === 'H' || item === 'V');
+
+            // Cálculos
+            let espacoOcupado = 0;
+            seqArray.forEach(tipo => { espacoOcupado += (tipo === 'H' ? wH : wV); });
+            
+            const espacoLivre = paredeL - espacoOcupado;
+            const espacoParaVaos = espacoLivre - (margem * 2);
+            const qtdQuatros = seqArray.length;
+            
+            let vao = 0;
+            if (qtdQuatros > 1) {
+                vao = espacoParaVaos / (qtdQuatros - 1);
+            }
+
+            // Validar Erros
+            const output = document.getElementById('output');
+            if (espacoParaVaos < 0) {
+                output.innerHTML = `<span class="error">ERRO: As obras não cabem na parede! Faltam ${Math.abs(espacoParaVaos).toFixed(1)} cm.</span>`;
+                document.getElementById('paredeSvg').innerHTML = '';
+                return;
+            }
+
+            // Exibir Resultados de Texto
+            output.innerHTML = `
+                Obras Totais: ${qtdQuatros}<br>
+                Margens nos Cantos: ${margem.toFixed(1)} cm<br>
+                Vão entre quadros: <strong>${vao.toFixed(2)} cm</strong><br>
+                Ocupação das Obras: ${espacoOcupado.toFixed(1)} cm
+            `;
+
+            // Desenhar o SVG
+            const svg = document.getElementById('paredeSvg');
+            // O ViewBox garante a proporção exata da sua parede real
+            svg.setAttribute('viewBox', `0 0 ${paredeL} ${paredeA}`);
+            svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+            
+            // Fundo e Chão
+            svg.innerHTML = `<rect width="${paredeL}" height="${paredeA}" class="parede-fundo" />`;
+            svg.innerHTML += `<line x1="0" y1="${paredeA}" x2="${paredeL}" y2="${paredeA}" class="chao" />`;
+
+            // O Eixo Y no SVG inverte (0 é no teto, ParedeA é no chão)
+            const yEixo = paredeA - eixoH;
+
+            // Linha do Eixo de 1.50m
+            svg.innerHTML += `<line x1="0" y1="${yEixo}" x2="${paredeL}" y2="${yEixo}" class="eixo" />`;
+            svg.innerHTML += `<text x="10" y="${yEixo - 5}" font-family="sans-serif" font-size="12" fill="#ff4757">Eixo ${eixoH}cm</text>`;
+
+            let currentX = margem;
+            
+            // Desenhar Cota da Margem Esquerda
+            desenharCotaH(svg, 0, margem, paredeA - 10, margem.toFixed(1));
+
+            // Loop para criar os quadros conforme a sequência
+            seqArray.forEach((tipo, index) => {
+                let w = tipo === 'H' ? wH : wV;
+                let h = tipo === 'H' ? hH : hV;
+                
+                // Centraliza o quadro no eixo Y
+                let yQuadro = yEixo - (h / 2);
+
+                // Desenha o Quadro
+                svg.innerHTML += `<rect x="${currentX}" y="${yQuadro}" width="${w}" height="${h}" class="quadro" />`;
+                
+                // Texto dentro (H ou V e medidas)
+                svg.innerHTML += `<text x="${currentX + w/2}" y="${yQuadro + h/2 - 2}" class="texto-quadro">${tipo}</text>`;
+                svg.innerHTML += `<text x="${currentX + w/2}" y="${yQuadro + h/2 + 12}" font-family="sans-serif" font-size="9" fill="#ccc" text-anchor="middle">${w}x${h}</text>`;
+
+                // Cota de altura do quadro em relação ao chão (para o primeiro quadro apenas, para não poluir)
+                if (index === 0) {
+                    desenharCotaV(svg, currentX - 15, yQuadro + h, paredeA, (eixoH - h/2).toFixed(1));
+                }
+
+                currentX += w;
+
+                // Desenhar Vão (se não for o último)
+                if (index < seqArray.length - 1) {
+                    desenharCotaH(svg, currentX, currentX + vao, yEixo + (hV/2) + 20, vao.toFixed(1));
+                    currentX += vao;
+                }
+            });
+
+            // Desenhar Cota da Margem Direita
+            desenharCotaH(svg, currentX, paredeL, paredeA - 10, margem.toFixed(1));
+        }
+
+        window.onload = calcularEDesenhar;
+    </script>
+</body>
+</html>
